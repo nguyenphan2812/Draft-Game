@@ -40,7 +40,9 @@ export default function Home() {
         const data = snap.data();
         setGameState(data);
         if (data.selectedList) setSelectedList(data.selectedList);
-        if (data.status === 'active') navigate('/game');
+        if (data.status === 'active' && sessionStorage.getItem('playerRole')) {
+          navigate('/game');
+        }
       } else {
         setGameState(null);
       }
@@ -65,15 +67,18 @@ export default function Home() {
     if (!selectedList) return setError('Please select a card list first');
     setLoading(true);
     setError('');
+    sessionStorage.setItem('playerRole', player);
 
     try {
       const list = imageLists.find((l) => l.name === selectedList);
       const images = list ? list.images : [];
       const teamTemplate = createTeamTemplate(DEFAULT_ROLES);
+      const shuffled = shuffleArray(images);
+
       const snap = await getDoc(doc(db, 'game', 'current'));
 
-      if (!snap.exists()) {
-        // First player — create the game document
+      if (!snap.exists() || snap.data().status === 'waiting' && !snap.data().player1 && !snap.data().player2) {
+        // Fresh game — write everything including image pool
         await setDoc(doc(db, 'game', 'current'), {
           status: 'waiting',
           player1: player === 'player1' ? { name: 'Player 1', skipsLeft: 1 } : null,
@@ -82,7 +87,7 @@ export default function Home() {
           currentTurn: 'player1',
           phase: 'draw',
           drawnImage: null,
-          imagePool: shuffleArray(images),
+          imagePool: shuffled,
           allImages: images,
           roles: DEFAULT_ROLES,
           player1Team: { ...teamTemplate },
@@ -92,12 +97,11 @@ export default function Home() {
         const data = snap.data();
         const other = player === 'player1' ? 'player2' : 'player1';
         const updates = {
-          [player]: {
-            name: player === 'player1' ? 'Player 1' : 'Player 2',
-            skipsLeft: 1,
-          },
+          [player]: { name: player === 'player1' ? 'Player 1' : 'Player 2', skipsLeft: 1 },
+          selectedList,
+          imagePool: shuffled,
+          allImages: images,
         };
-        // If the other player is already in, activate the game
         if (data[other]) updates.status = 'active';
         await updateDoc(doc(db, 'game', 'current'), updates);
       }
@@ -168,33 +172,42 @@ export default function Home() {
 
       {/* Who are you */}
       <p className="text-slate-400 text-sm mb-4">Who are you?</p>
-      <div className="flex gap-6 mb-6">
-        <button
-          onClick={() => handlePlayerSelect('player1')}
-          disabled={loading || p1Ready}
-          className={`w-36 py-3 rounded-xl font-bold text-lg border-2 transition-all
-            ${p1Ready
-              ? 'border-blue-500 bg-blue-500/20 text-blue-300 cursor-not-allowed'
-              : 'border-slate-600 hover:border-blue-500 hover:bg-blue-500/10 text-slate-100'
-            }`}
-        >
-          Player 1
-          {p1Ready && <span className="block text-xs font-normal mt-1">Ready ✓</span>}
-        </button>
+      {(() => {
+        const mySelectedRole = sessionStorage.getItem('playerRole');
+        return (
+          <div className="flex gap-6 mb-6">
+            <button
+              onClick={() => handlePlayerSelect('player1')}
+              disabled={loading || p1Ready || !!mySelectedRole}
+              className={`w-36 py-3 rounded-xl font-bold text-lg border-2 transition-all
+                ${p1Ready
+                  ? 'border-blue-500 bg-blue-500/20 text-blue-300 cursor-not-allowed'
+                  : mySelectedRole
+                  ? 'border-slate-700 text-slate-600 cursor-not-allowed'
+                  : 'border-slate-600 hover:border-blue-500 hover:bg-blue-500/10 text-slate-100'
+                }`}
+            >
+              Player 1
+              {p1Ready && <span className="block text-xs font-normal mt-1">Ready ✓</span>}
+            </button>
 
-        <button
-          onClick={() => handlePlayerSelect('player2')}
-          disabled={loading || p2Ready}
-          className={`w-36 py-3 rounded-xl font-bold text-lg border-2 transition-all
-            ${p2Ready
-              ? 'border-red-500 bg-red-500/20 text-red-300 cursor-not-allowed'
-              : 'border-slate-600 hover:border-red-500 hover:bg-red-500/10 text-slate-100'
-            }`}
-        >
-          Player 2
-          {p2Ready && <span className="block text-xs font-normal mt-1">Ready ✓</span>}
-        </button>
-      </div>
+            <button
+              onClick={() => handlePlayerSelect('player2')}
+              disabled={loading || p2Ready || !!mySelectedRole}
+              className={`w-36 py-3 rounded-xl font-bold text-lg border-2 transition-all
+                ${p2Ready
+                  ? 'border-red-500 bg-red-500/20 text-red-300 cursor-not-allowed'
+                  : mySelectedRole
+                  ? 'border-slate-700 text-slate-600 cursor-not-allowed'
+                  : 'border-slate-600 hover:border-red-500 hover:bg-red-500/10 text-slate-100'
+                }`}
+            >
+              Player 2
+              {p2Ready && <span className="block text-xs font-normal mt-1">Ready ✓</span>}
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Status / error */}
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
