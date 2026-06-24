@@ -19,20 +19,14 @@ export default function ManageLists() {
   const [showNew, setShowNew]     = useState(false);
 
   useEffect(() => {
-    loadLists();
+    let cancelled = false;
+    getDoc(doc(db, 'config', 'imageLists')).then((snap) => {
+      if (!cancelled && snap.exists()) setLists(snap.data().lists || []);
+    }).catch(console.error).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, []);
-
-  async function loadLists() {
-    setLoading(true);
-    try {
-      const snap = await getDoc(doc(db, 'config', 'imageLists'));
-      if (snap.exists()) setLists(snap.data().lists || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function saveLists(updated) {
     setSaving(true);
